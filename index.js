@@ -4,6 +4,7 @@ const { google } = require('googleapis');
 const app = express();
 app.use(express.json());
 
+// 🔥 Google Sheet Function
 async function addToSheet(data) {
   const auth = new google.auth.GoogleAuth({
     credentials: JSON.parse(process.env.GOOGLE_CREDENTIALS),
@@ -30,23 +31,45 @@ async function addToSheet(data) {
   });
 }
 
+// 🔥 MAIN WEBHOOK
 app.post('/sheet', async (req, res) => {
   try {
     const body = req.body;
 
-    // 🔥 Razorpay Webhook
+    // ===========================
+    // 🔴 RAZORPAY WEBHOOK
+    // ===========================
     if (body.event && body.payload) {
 
       const payment = body.payload.payment?.entity;
 
+      if (!payment) return res.sendStatus(200);
+
       const data = {
-        orderId: payment?.order_id || payment?.id || "No ID",
-        name: payment?.notes?.name || "No Name",
-        phone: payment?.contact || "No Phone",
-        email: payment?.email || "No Email",
-        product: payment?.notes?.product || "Razorpay Product",
-        amount: payment?.amount ? payment.amount / 100 : "0",
-        date: payment?.created_at || new Date().toISOString()
+        orderId: payment.order_id || payment.id,
+
+        // 🔥 FIXED NAME
+        name:
+          payment.notes?.name ||
+          payment.email?.split("@")[0] ||
+          "No Name",
+
+        // 🔥 PHONE
+        phone: payment.contact || "No Phone",
+
+        // 🔥 EMAIL
+        email: payment.email || "No Email",
+
+        // 🔥 FIXED PRODUCT
+        product:
+          payment.notes?.product ||
+          "Strong Nation Product",
+
+        // 🔥 AMOUNT (paise → ₹)
+        amount: payment.amount / 100,
+
+        // 🔥 DATE FIX
+        date: new Date(payment.created_at * 1000).toISOString()
       };
 
       console.log("Razorpay Event:", data);
@@ -54,37 +77,51 @@ app.post('/sheet', async (req, res) => {
       await addToSheet(data);
     }
 
-    // 🔥 Shopify Webhook
+    // ===========================
+    // 🟢 SHOPIFY WEBHOOK
+    // ===========================
     else {
 
       const data = {
         orderId: body.id || "No ID",
-        name: body.customer?.first_name || "No Name",
-        phone: body.phone || body.customer?.phone || "No Phone",
+
+        name:
+          body.customer?.first_name +
+            " " +
+            body.customer?.last_name ||
+          "No Name",
+
+        phone: body.customer?.phone || "No Phone",
+
         email: body.email || "No Email",
-        product: body.line_items?.map(i => i.name).join(", ") || "No Product",
+
+        product:
+          body.line_items
+            ?.map(item => item.name)
+            .join(", ") || "No Product",
+
         amount: body.total_price || "0",
+
         date: body.created_at || new Date().toISOString()
       };
 
-      console.log("Shopify Order:", data);
+      console.log("Shopify Event:", data);
 
       await addToSheet(data);
     }
 
     res.sendStatus(200);
-
   } catch (err) {
-    console.error(err);
+    console.error("ERROR:", err);
     res.sendStatus(500);
   }
 });
 
-// Health check
+// 🔥 HEALTH CHECK
 app.get('/', (req, res) => {
   res.send("Server running");
 });
 
-// ✅ Render port fix
+// 🔥 PORT FIX (Render ke liye)
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log("Server started on", PORT));
