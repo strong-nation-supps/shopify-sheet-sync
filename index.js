@@ -4,6 +4,7 @@ const { google } = require('googleapis');
 const app = express();
 app.use(express.json());
 
+// ================= GOOGLE SHEET FUNCTION =================
 async function addToSheet(data) {
   const auth = new google.auth.GoogleAuth({
     credentials: JSON.parse(process.env.GOOGLE_CREDENTIALS),
@@ -30,21 +31,22 @@ async function addToSheet(data) {
   });
 }
 
+// ================= WEBHOOK =================
 app.post('/sheet', async (req, res) => {
   try {
     const body = req.body;
 
     console.log("RAW WEBHOOK:", JSON.stringify(body));
 
-    // ✅ Only Razorpay handling
-    if (body.payload && body.payload.payment) {
+    // ================= RAZORPAY =================
+    if (body.event && body.payload && body.payload.payment) {
 
       const payment = body.payload.payment.entity;
 
       const data = {
-        orderId: payment.order_id || payment.id,
+        orderId: payment.order_id || payment.id || "No Order ID",
 
-        // 👇 Notes me agar kuch pass karega to milega
+        // 🔥 IMPORTANT: ye tabhi aayega jab frontend se notes pass karega
         name: payment.notes?.name || "No Name",
 
         phone: payment.contact || "No Phone",
@@ -56,8 +58,8 @@ app.post('/sheet', async (req, res) => {
         amount: payment.amount ? payment.amount / 100 : 0,
 
         date: payment.created_at
-          ? new Date(payment.created_at * 1000).toISOString()
-          : new Date().toISOString()
+          ? new Date(payment.created_at * 1000).toLocaleString()
+          : new Date().toLocaleString()
       };
 
       console.log("FINAL DATA:", data);
@@ -73,11 +75,11 @@ app.post('/sheet', async (req, res) => {
   }
 });
 
-// Health check
+// ================= HEALTH CHECK =================
 app.get('/', (req, res) => {
   res.send("Server running");
 });
 
-// Render port
+// ================= PORT FIX =================
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log("Server started on", PORT));
