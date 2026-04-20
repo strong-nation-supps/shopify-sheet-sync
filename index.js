@@ -4,6 +4,9 @@ const { google } = require('googleapis');
 const app = express();
 app.use(express.json());
 
+// 🔥 Duplicate prevention (temporary memory)
+const processedOrders = new Set();
+
 async function addToSheet(data) {
   const auth = new google.auth.GoogleAuth({
     credentials: JSON.parse(process.env.GOOGLE_CREDENTIALS),
@@ -14,10 +17,11 @@ async function addToSheet(data) {
 
   await sheets.spreadsheets.values.append({
     spreadsheetId: '1jM9t52-UCrSGclRdem6SX0xG0dUQi3bQeWUuuXQhu2I',
-    range: 'Sheet1!A:F',
+    range: 'Sheet1!A:G', // 👈 Order ID added
     valueInputOption: 'USER_ENTERED',
     requestBody: {
       values: [[
+        data.orderId,
         data.name,
         data.phone,
         data.email,
@@ -33,7 +37,18 @@ app.post('/sheet', async (req, res) => {
   try {
     const order = req.body;
 
+    const orderId = order.id; // 🔥 Unique ID
+
+    // ❌ Duplicate check
+    if (processedOrders.has(orderId)) {
+      console.log("Duplicate skipped:", orderId);
+      return res.sendStatus(200);
+    }
+
+    processedOrders.add(orderId);
+
     const data = {
+      orderId: orderId,
       name: order.customer?.first_name || "No Name",
       phone: order.customer?.phone || "No Phone",
       email: order.email || "No Email",
@@ -53,6 +68,7 @@ app.post('/sheet', async (req, res) => {
   }
 });
 
+// Health check
 app.get('/', (req, res) => {
   res.send("Server running");
 });
