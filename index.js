@@ -4,7 +4,9 @@ const { google } = require('googleapis');
 const app = express();
 app.use(express.json());
 
-// ================= GOOGLE SHEET FUNCTION =================
+// ✅ Duplicate prevention using unique event id
+const processedEvents = new Set();
+
 async function addToSheet(data) {
   const auth = new google.auth.GoogleAuth({
     credentials: JSON.parse(process.env.GOOGLE_CREDENTIALS),
@@ -31,55 +33,79 @@ async function addToSheet(data) {
   });
 }
 
-// ================= WEBHOOK =================
 app.post('/sheet', async (req, res) => {
   try {
     const body = req.body;
 
-    console.log("RAW WEBHOOK:", JSON.stringify(body));
+    // 🔥 Razorpay webhook
+    if (body.event && body.payload) {
 
-    // ================= RAZORPAY =================
-    if (body.event && body.payload && body.payload.payment) {
+      const eventId = body.payload?.payment?.entity?.id;
+
+      if (processedEvents.has(eventId)) {
+        console.log("Duplicate skipped:", eventId);
+        return res.sendStatus(200);
+      }
+
+      processedEvents.add(eventId);
 
       const payment = body.payload.payment.entity;
 
       const data = {
-        orderId: payment.order_id || payment.id || "No Order ID",
-
-        // 🔥 IMPORTANT: ye tabhi aayega jab frontend se notes pass karega
+        orderId: payment.order_id || payment.id,
         name: payment.notes?.name || "No Name",
-
         phone: payment.contact || "No Phone",
-
         email: payment.email || "No Email",
-
-        product: payment.notes?.product || "No Product",
-
-        amount: payment.amount ? payment.amount / 100 : 0,
-
+        product: payment.notes?.product || "Razorpay Product",
+        amount: payment.amount / 100, // paise to rupees
         date: payment.created_at
-          ? new Date(payment.created_at * 1000).toLocaleString()
-          : new Date().toLocaleString()
       };
 
-      console.log("FINAL DATA:", data);
+      console.log("Razorpay Event:", data);
+
+      await addToSheet(data);
+    }
+
+    // 🔥 Shopify webhook
+    else {
+      const orderId = body.id;
+
+      if (processedEvents.has(orderId)) {
+        console.log("Duplicate skipped:", orderId);
+        return res.sendStatus(200);
+      }
+
+      processedEvents.add(orderId);
+
+      const data = {
+        orderId: orderId,
+        name: body.customer?.first_name || "No Name",
+        phone: body.customer?.phone || "No Phone",
+        email: body.email || "No Email",
+        product: body.line_items?.[0]?.name || "No Product",
+        amount: body.total_price || "0",
+        date: body.created_at
+      };
+
+      console.log("Shopify Order:", data);
 
       await addToSheet(data);
     }
 
     res.sendStatus(200);
-
   } catch (err) {
-    console.error("ERROR:", err);
+    console.error(err);
     res.sendStatus(500);
   }
 });
 
-// ================= HEALTH CHECK =================
+// Health check
 app.get('/', (req, res) => {
   res.send("Server running");
 });
 
-// ================= PORT FIX =================
+// ✅ IMPORTANT: Render dynamic port
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log("Server started on", PORT));
+
+//finish
