@@ -4,7 +4,7 @@ const { google } = require('googleapis');
 const app = express();
 app.use(express.json());
 
-// ✅ Duplicate prevention using unique event id
+// ✅ Duplicate prevention
 const processedEvents = new Set();
 
 async function addToSheet(data) {
@@ -37,10 +37,14 @@ app.post('/sheet', async (req, res) => {
   try {
     const body = req.body;
 
-    // 🔥 Razorpay webhook
+    // =========================
+    // 🔥 RAZORPAY WEBHOOK
+    // =========================
     if (body.event && body.payload) {
 
       const eventId = body.payload?.payment?.entity?.id;
+
+      if (!eventId) return res.sendStatus(200);
 
       if (processedEvents.has(eventId)) {
         console.log("Duplicate skipped:", eventId);
@@ -57,8 +61,8 @@ app.post('/sheet', async (req, res) => {
         phone: payment.contact || "No Phone",
         email: payment.email || "No Email",
         product: payment.notes?.product || "Razorpay Product",
-        amount: payment.amount / 100, // paise to rupees
-        date: payment.created_at
+        amount: payment.amount ? payment.amount / 100 : 0,
+        date: new Date(payment.created_at * 1000).toISOString()
       };
 
       console.log("Razorpay Event:", data);
@@ -66,9 +70,14 @@ app.post('/sheet', async (req, res) => {
       await addToSheet(data);
     }
 
-    // 🔥 Shopify webhook
+    // =========================
+    // 🔥 SHOPIFY WEBHOOK
+    // =========================
     else {
-      const orderId = body.id;
+
+      const orderId = body.id || body.token;
+
+      if (!orderId) return res.sendStatus(200);
 
       if (processedEvents.has(orderId)) {
         console.log("Duplicate skipped:", orderId);
@@ -79,11 +88,30 @@ app.post('/sheet', async (req, res) => {
 
       const data = {
         orderId: orderId,
-        name: body.customer?.first_name || "No Name",
-        phone: body.customer?.phone || "No Phone",
+
+        name:
+          body.customer?.first_name ||
+          body.shipping_address?.name ||
+          "No Name",
+
+        phone:
+          body.customer?.phone ||
+          body.shipping_address?.phone ||
+          body.billing_address?.phone ||
+          "No Phone",
+
         email: body.email || "No Email",
-        product: body.line_items?.[0]?.name || "No Product",
-        amount: body.total_price || "0",
+
+        product:
+          body.line_items && body.line_items.length > 0
+            ? body.line_items.map(item => item.name).join(", ")
+            : "No Product",
+
+        amount:
+          body.total_price ||
+          body.subtotal_price ||
+          "0",
+
         date: body.created_at
       };
 
@@ -93,17 +121,18 @@ app.post('/sheet', async (req, res) => {
     }
 
     res.sendStatus(200);
+
   } catch (err) {
-    console.error(err);
+    console.error("ERROR:", err);
     res.sendStatus(500);
   }
 });
 
-// Health check
+// ✅ Health check
 app.get('/', (req, res) => {
   res.send("Server running");
 });
 
-// ✅ IMPORTANT: Render dynamic port
+// ✅ Render port fix
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log("Server started on", PORT));
