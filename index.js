@@ -4,7 +4,6 @@ const { google } = require('googleapis');
 const app = express();
 app.use(express.json());
 
-// ✅ Duplicate prevention
 const processedEvents = new Set();
 
 async function addToSheet(data) {
@@ -37,12 +36,15 @@ app.post('/sheet', async (req, res) => {
   try {
     const body = req.body;
 
-    // =========================
-    // 🔥 RAZORPAY WEBHOOK
-    // =========================
-    if (body.event && body.payload) {
+    console.log("Incoming Webhook:", JSON.stringify(body));
 
-      const eventId = body.payload?.payment?.entity?.id;
+    // =========================
+    // 🔥 RAZORPAY DETECTION
+    // =========================
+    if (body.payload && body.payload.payment) {
+
+      const payment = body.payload.payment.entity;
+      const eventId = payment.id;
 
       if (!eventId) return res.sendStatus(200);
 
@@ -52,8 +54,6 @@ app.post('/sheet', async (req, res) => {
       }
 
       processedEvents.add(eventId);
-
-      const payment = body.payload.payment.entity;
 
       const data = {
         orderId: payment.order_id || payment.id,
@@ -71,13 +71,11 @@ app.post('/sheet', async (req, res) => {
     }
 
     // =========================
-    // 🔥 SHOPIFY WEBHOOK
+    // 🔥 SHOPIFY DETECTION
     // =========================
-    else {
+    else if (body.id || body.token) {
 
       const orderId = body.id || body.token;
-
-      if (!orderId) return res.sendStatus(200);
 
       if (processedEvents.has(orderId)) {
         console.log("Duplicate skipped:", orderId);
@@ -120,6 +118,10 @@ app.post('/sheet', async (req, res) => {
       await addToSheet(data);
     }
 
+    else {
+      console.log("Unknown webhook format");
+    }
+
     res.sendStatus(200);
 
   } catch (err) {
@@ -128,11 +130,10 @@ app.post('/sheet', async (req, res) => {
   }
 });
 
-// ✅ Health check
+// Health check
 app.get('/', (req, res) => {
   res.send("Server running");
 });
 
-// ✅ Render port fix
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log("Server started on", PORT));
