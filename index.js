@@ -4,8 +4,6 @@ const { google } = require('googleapis');
 const app = express();
 app.use(express.json());
 
-const processedEvents = new Set();
-
 async function addToSheet(data) {
   const auth = new google.auth.GoogleAuth({
     credentials: JSON.parse(process.env.GOOGLE_CREDENTIALS),
@@ -36,90 +34,35 @@ app.post('/sheet', async (req, res) => {
   try {
     const body = req.body;
 
-    console.log("Incoming Webhook:", JSON.stringify(body));
+    console.log("RAW WEBHOOK:", JSON.stringify(body));
 
-    // =========================
-    // 🔥 RAZORPAY DETECTION
-    // =========================
+    // ✅ Only Razorpay handling
     if (body.payload && body.payload.payment) {
 
       const payment = body.payload.payment.entity;
-      const eventId = payment.id;
-
-      if (!eventId) return res.sendStatus(200);
-
-      if (processedEvents.has(eventId)) {
-        console.log("Duplicate skipped:", eventId);
-        return res.sendStatus(200);
-      }
-
-      processedEvents.add(eventId);
 
       const data = {
         orderId: payment.order_id || payment.id,
+
+        // 👇 Notes me agar kuch pass karega to milega
         name: payment.notes?.name || "No Name",
+
         phone: payment.contact || "No Phone",
+
         email: payment.email || "No Email",
-        product: payment.notes?.product || "Razorpay Product",
+
+        product: payment.notes?.product || "No Product",
+
         amount: payment.amount ? payment.amount / 100 : 0,
-        date: new Date(payment.created_at * 1000).toISOString()
+
+        date: payment.created_at
+          ? new Date(payment.created_at * 1000).toISOString()
+          : new Date().toISOString()
       };
 
-      console.log("Razorpay Event:", data);
+      console.log("FINAL DATA:", data);
 
       await addToSheet(data);
-    }
-
-    // =========================
-    // 🔥 SHOPIFY DETECTION
-    // =========================
-    else if (body.id || body.token) {
-
-      const orderId = body.id || body.token;
-
-      if (processedEvents.has(orderId)) {
-        console.log("Duplicate skipped:", orderId);
-        return res.sendStatus(200);
-      }
-
-      processedEvents.add(orderId);
-
-      const data = {
-        orderId: orderId,
-
-        name:
-          body.customer?.first_name ||
-          body.shipping_address?.name ||
-          "No Name",
-
-        phone:
-          body.customer?.phone ||
-          body.shipping_address?.phone ||
-          body.billing_address?.phone ||
-          "No Phone",
-
-        email: body.email || "No Email",
-
-        product:
-          body.line_items && body.line_items.length > 0
-            ? body.line_items.map(item => item.name).join(", ")
-            : "No Product",
-
-        amount:
-          body.total_price ||
-          body.subtotal_price ||
-          "0",
-
-        date: body.created_at
-      };
-
-      console.log("Shopify Order:", data);
-
-      await addToSheet(data);
-    }
-
-    else {
-      console.log("Unknown webhook format");
     }
 
     res.sendStatus(200);
@@ -135,5 +78,6 @@ app.get('/', (req, res) => {
   res.send("Server running");
 });
 
+// Render port
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log("Server started on", PORT));
