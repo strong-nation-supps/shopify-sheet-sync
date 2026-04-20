@@ -4,7 +4,7 @@ const { google } = require('googleapis');
 const app = express();
 app.use(express.json());
 
-// 🔥 Duplicate prevention (temporary memory)
+// 🔥 Duplicate prevention (memory)
 const processedOrders = new Set();
 
 async function addToSheet(data) {
@@ -17,7 +17,7 @@ async function addToSheet(data) {
 
   await sheets.spreadsheets.values.append({
     spreadsheetId: '1jM9t52-UCrSGclRdem6SX0xG0dUQi3bQeWUuuXQhu2I',
-    range: 'Sheet1!A:G', // 👈 Order ID added
+    range: 'Sheet1!A:G',
     valueInputOption: 'USER_ENTERED',
     requestBody: {
       values: [[
@@ -35,9 +35,9 @@ async function addToSheet(data) {
 
 app.post('/sheet', async (req, res) => {
   try {
-    const order = req.body;
+    const checkout = req.body;
 
-    const orderId = order.id; // 🔥 Unique ID
+    const orderId = checkout.id; // 🔥 checkout id
 
     // ❌ Duplicate check
     if (processedOrders.has(orderId)) {
@@ -47,23 +47,24 @@ app.post('/sheet', async (req, res) => {
 
     processedOrders.add(orderId);
 
+    // ✅ Correct mapping for CHECKOUT webhook
     const data = {
       orderId: orderId,
-      name: order.customer?.first_name || "No Name",
-      phone: order.customer?.phone || "No Phone",
-      email: order.email || "No Email",
-      product: order.line_items?.[0]?.name || "No Product",
-      amount: order.total_price || "0",
-      date: order.created_at
+      name: checkout.shipping_address?.first_name || "No Name",
+      phone: checkout.phone || "No Phone",
+      email: checkout.email || "No Email",
+      product: checkout.line_items?.[0]?.title || "No Product",
+      amount: checkout.total_price || "0",
+      date: checkout.created_at
     };
 
-    console.log("New Order:", data);
+    console.log("New Checkout:", data);
 
     await addToSheet(data);
 
     res.sendStatus(200);
   } catch (err) {
-    console.error(err);
+    console.error("Error:", err);
     res.sendStatus(500);
   }
 });
@@ -73,4 +74,8 @@ app.get('/', (req, res) => {
   res.send("Server running");
 });
 
-app.listen(3000, () => console.log("Server started"));
+// 🔥 Render compatible PORT
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server started on port ${PORT}`);
+});
